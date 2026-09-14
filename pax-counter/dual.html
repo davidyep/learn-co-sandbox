@@ -87,8 +87,12 @@ $("finish").onclick=()=>{
 };
 $("export").onclick=()=>{
  const sessions=new Map(data.sessions.map(s=>[s.id,s]));
- const rows=[["event_id","session_id","location","count_mode","event_type","timestamp_utc","timestamp_nyc","voided_at_utc","target_event_id","session_started_utc","session_finished_utc","session_status","boarding_total","exiting_total"]];
- for(const e of data.events){const s=sessions.get(e.sessionId);rows.push([e.id,s.id,s.location,e.mode,e.type,e.at,new Date(e.at).toLocaleString("en-US",{timeZone:"America/New_York",hour12:false}),e.voided||"",e.target||"",s.started,s.finished||"",s.finished?"completed":"active",total(s,"boarding"),total(s,"exiting")])}
+ const rows=[["session_id","location","type","timestamp_nyc","count"]];
+ for(const e of data.events){
+  if(e.type!=="passenger"||e.voided||!["boarding","exiting"].includes(e.mode))continue;
+  const s=sessions.get(e.sessionId);
+  rows.push([s.id,s.location,e.mode,new Date(e.at).toLocaleString("en-US",{timeZone:"America/New_York",hour12:false}),1]);
+ }
  const cell=v=>{let t=String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
  const csv="\uFEFF"+rows.map(row=>row.map(cell).join(",")).join("\r\n");
  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),a=document.createElement("a");
