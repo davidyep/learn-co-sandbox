@@ -65,12 +65,17 @@ async function syncSession(s){
  if(!s.finished||s.synced_at)return true;
  const rows=rowsFor(s);
  if(!rows.length){s.synced_at=now();persist();return true}
- const response=await fetch(SUPABASE_URL+"/rest/v1/passenger_observations?on_conflict=observation_id",{
+ const response=await fetch(SUPABASE_URL+"/rest/v1/passenger_observations",{
   method:"POST",
-  headers:{"apikey":SUPABASE_KEY,"Content-Type":"application/json","Prefer":"resolution=ignore-duplicates,return=minimal"},
+  headers:{"apikey":SUPABASE_KEY,"Content-Type":"application/json","Prefer":"return=minimal"},
   body:JSON.stringify(rows)
  });
- if(!response.ok){const detail=await response.text();throw Error("Database returned "+response.status+": "+detail)}
+ if(!response.ok){
+  const detail=await response.text();
+  let duplicate=false;
+  try{duplicate=response.status===409&&JSON.parse(detail).code==="23505"}catch{}
+  if(!duplicate)throw Error("Database returned "+response.status+": "+detail);
+ }
  s.synced_at=now();persist();return true;
 }
 async function syncPending(){
