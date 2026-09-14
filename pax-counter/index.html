@@ -126,5 +126,6 @@ $("export").onclick=()=>{
 window.addEventListener("storage",e=>{if(e.key!==KEY&&e.key!==null)return;try{const saved=localStorage.getItem(KEY);if(!saved)throw Error("Records removed");data=validate(JSON.parse(saved));$("message").textContent="Records updated from another tab."}catch{blocked=true;$("message").textContent="Records changed in another tab. Counting is paused."}render()});
 render();
 </script>
+<!-- deployment trigger 2 -->
 </body>
 </html>
