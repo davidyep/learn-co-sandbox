@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>Pax Counter</title>
+<style>
+*{box-sizing:border-box}html{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111}
+body{margin:0;background:white}main{max-width:440px;margin:auto;padding:32px 24px 44px}
+h1{text-align:center;font-size:30px;margin:14px 0 32px}
+label{display:block;font-weight:600;font-size:14px;margin:0 0 8px}
+input,select,button{font:inherit}input,select{width:100%;min-height:48px;padding:10px 12px;margin-bottom:18px;border:1px solid #d4d7dd;border-radius:9px;background:white;font-size:16px}
+button{border:0;cursor:pointer;touch-action:manipulation}button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #007aff;outline-offset:3px}
+.action{width:100%;min-height:49px;padding:12px;border-radius:9px;background:#007aff;color:white;font-weight:600}
+.counter{text-align:center;padding:27px 0 33px}
+#state{font-size:14px;color:#666;min-height:20px}
+#total{font-size:76px;font-weight:700;line-height:1;margin:28px 0 12px;font-variant-numeric:tabular-nums}
+#count-label{font-size:14px;color:#666}
+.controls{display:flex;align-items:center;justify-content:space-between;max-width:320px;width:100%;gap:48px;margin:32px auto 38px}
+.circle{display:flex;align-items:center;justify-content:center;flex:0 0 78px;width:78px;height:78px;padding:0;border-radius:50%;font-size:34px;font-weight:400;line-height:1;color:white}
+#minus{background:#ff3b30}#plus{background:#34c759}.circle:active:not(:disabled){transform:scale(.94)}
+#reset{background:#007aff;color:white;border-radius:9px;padding:14px 18px;font-size:24px}
+#message{min-height:38px;margin:16px 0;color:#555;font-size:14px;line-height:1.4}
+footer{border-top:1px solid #eee;padding-top:16px;color:#555;font-size:14px}
+#export{width:100%;min-height:48px;background:#f2f2f7;color:#005bbf;border-radius:9px;font-weight:600}
+small{display:block;margin-top:14px;color:#666;font-size:12px;line-height:1.5}
+</style>
+</head>
+<body>
+<main>
+<h1>Pax Counter</h1>
+<label for="location">Survey location</label>
+<input id="location" list="locations" placeholder="Enter intersection or survey site" maxlength="200" autocomplete="off">
+<datalist id="locations"></datalist>
+<label for="mode">Count type</label>
+<select id="mode"><option value="boarding">Boarding · Getting onto vans</option><option value="exiting">Exiting · Getting off vans</option></select>
+<button id="start" class="action">Start Count</button>
+<section class="counter" aria-label="Passenger counter">
+<div id="state">Ready to start a boarding count</div><div id="total">0</div><div id="count-label">Passengers boarded</div>
+<div class="controls">
+<button id="minus" class="circle" disabled aria-label="Subtract last passenger">−</button>
+<button id="plus" class="circle" disabled aria-label="Add passenger">+</button>
+</div>
+<button id="reset" disabled>Reset</button>
+</section>
+<button id="finish" class="action" disabled>Finish Count</button>
+<p id="message" role="status" aria-live="polite"></p>
+<footer><p id="summary"></p><button id="export" disabled>Export Records · CSV</button>
+<small>Counts are saved in this browser on this device. Export your records before clearing browser data. Displayed times use New York time.</small></footer>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id), KEY="nyc-pax-sessions-v2";
+let data={sessions:[],events:[]},blocked=false;
+const now=()=>new Date().toISOString(), uid=()=>crypto.randomUUID();
+const current=()=>data.sessions.find(s=>!s.finished);
+const live=s=>s?data.events.filter(e=>e.sessionId===s.id&&e.type==="passenger"&&!e.voided):[];
+const count=s=>live(s).length, title=m=>m==="boarding"?"Boarding":"Exiting";
+const ny=at=>new Date(at).toLocaleString("en-US",{timeZone:"America/New_York",hour12:false});
+const clock=at=>new Date(at).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"});
+function validate(value){
+ if(!value||!Array.isArray(value.sessions)||!Array.isArray(value.events))throw Error("Invalid data");
+ if(value.sessions.filter(s=>!s.finished).length>1)throw Error("Multiple active counts");
+ const ids=new Set(value.sessions.map(s=>s.id));
+ if(ids.size!==value.sessions.length||value.sessions.some(s=>!s.id||!s.location||!["boarding","exiting"].includes(s.mode)||!s.started))throw Error("Invalid sessions");
+ if(value.events.some(e=>!e.id||!ids.has(e.sessionId)||!e.at))throw Error("Invalid events");
+ return value;
+}
+try{const saved=localStorage.getItem(KEY);if(saved)data=validate(JSON.parse(saved))}
+catch{blocked=true;$("message").textContent="Saved records could not be opened. Counting is paused to protect them."}
+function log(s,type,at,extra={}){
+ data.events.push({id:uid(),sessionId:s.id,location:s.location,mode:s.mode,type,at,...extra})
+}
+function mutate(fn,message){
+ if(blocked)return;
+ const previous=JSON.stringify(data);
+ try{fn();localStorage.setItem(KEY,JSON.stringify(data));$("message").textContent=message}
+ catch{data=JSON.parse(previous);$("message").textContent="Could not save this tap. It was not counted. Check available storage."}
+ render();
+}
+function render(){
+ const s=current(),mode=s?s.mode:$("mode").value,n=count(s);
+ if(s){$("location").value=s.location;$("mode").value=s.mode}
+ $("location").disabled=$("mode").disabled=$("start").disabled=!!s||blocked;
+ $("plus").disabled=$("finish").disabled=!s||blocked;
+ $("minus").disabled=$("reset").disabled=!s||!n||blocked;
+ $("total").textContent=n;
+ $("count-label").textContent=mode==="boarding"?"Passengers boarded":"Passengers exited";
+ $("state").textContent=s?title(mode)+" · Started "+clock(s.started)+" ET":"Ready to start a "+mode+" count";
+ $("plus").setAttribute("aria-label","Add one "+mode+" passenger");
+ $("summary").textContent=data.sessions.filter(x=>x.finished).length+" completed counts · "+data.sessions.filter(x=>x.mode==="boarding").reduce((t,x)=>t+count(x),0)+" boarding · "+data.sessions.filter(x=>x.mode==="exiting").reduce((t,x)=>t+count(x),0)+" exiting";
+ $("locations").replaceChildren(...[...new Set(data.sessions.map(x=>x.location))].map(name=>{const o=document.createElement("option");o.value=name;return o}));
+ $("export").disabled=!data.events.length;
+}
+$("mode").onchange=render;
+$("start").onclick=()=>{
+ if(current())return;
+ const location=$("location").value.trim(),mode=$("mode").value;
+ if(!location){$("message").textContent="Enter a survey location first.";$("location").focus();return}
+ mutate(()=>{const at=now(),s={id:uid(),location,mode,started:at,finished:null};data.sessions.push(s);log(s,"session_started",at)},title(mode)+" count started. Tap + once per passenger.");
+};
+$("plus").onclick=()=>{const s=current();if(s)mutate(()=>log(s,"passenger",now()),"Passenger recorded.")};
+$("minus").onclick=()=>{
+ const s=current(),events=live(s),last=events.at(-1);if(!last)return;
+ mutate(()=>{const at=now();last.voided=at;log(s,"undo",at,{target:last.id})},"Last passenger removed.");
+};
+$("reset").onclick=()=>{
+ const s=current();if(!s||!count(s))return;
+ if(!confirm("Reset this "+s.mode+" count to zero? Completed counts stay saved."))return;
+ mutate(()=>{const at=now();live(s).forEach(e=>e.voided=at);log(s,"reset",at)},"Current count reset.");
+};
+$("finish").onclick=()=>{
+ const s=current();if(!s)return;const n=count(s);
+ mutate(()=>{const at=now();s.finished=at;log(s,"session_finished",at)},title(s.mode)+" count saved: "+n+" passengers.");
+};
+$("export").onclick=()=>{
+ const header=["event_id","session_id","location","count_mode","event_type","timestamp_utc","timestamp_nyc","voided_at_utc","target_event_id","session_started_utc","session_finished_utc","session_status","session_passenger_total"];
+ const sessions=new Map(data.sessions.map(s=>[s.id,s]));
+ const rows=data.events.map(e=>{const s=sessions.get(e.sessionId);return[e.id,e.sessionId,s.location,s.mode,e.type,e.at,ny(e.at),e.voided||"",e.target||"",s.started,s.finished||"",s.finished?"completed":"active",count(s)]});
+ const cell=x=>{let t=String(x);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
+ const csv="\uFEFF"+[header,...rows].map(row=>row.map(cell).join(",")).join("\r\n");
+ const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+ const a=document.createElement("a");a.href=url;a.download="pax-counts-"+now().slice(0,10)+".csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+window.addEventListener("storage",e=>{if(e.key!==KEY&&e.key!==null)return;try{const saved=localStorage.getItem(KEY);if(!saved)throw Error("Records removed");data=validate(JSON.parse(saved));$("message").textContent="Records updated from another tab."}catch{blocked=true;$("message").textContent="Records changed in another tab. Counting is paused."}render()});
+render();
+</script>
+</body>
+</html>
