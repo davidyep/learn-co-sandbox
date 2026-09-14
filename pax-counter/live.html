@@ -70,7 +70,7 @@ async function syncSession(s){
   headers:{"apikey":SUPABASE_KEY,"Content-Type":"application/json","Prefer":"resolution=ignore-duplicates,return=minimal"},
   body:JSON.stringify(rows)
  });
- if(!response.ok)throw Error("Database returned "+response.status);
+ if(!response.ok){const detail=await response.text();throw Error("Database returned "+response.status+": "+detail)}
  s.synced_at=now();persist();return true;
 }
 async function syncPending(){
@@ -81,7 +81,8 @@ async function syncPending(){
  try{
   for(const s of pending)await syncSession(s);
   $("message").textContent=pending.length===1?"Count uploaded to the shared database.":pending.length+" counts uploaded to the shared database.";
- }catch{
+ }catch(error){
+  console.error("Pax sync failed",error);
   $("message").textContent="Count is saved on this device and waiting to upload. It will retry when service returns.";
  }finally{syncing=false;render()}
 }
