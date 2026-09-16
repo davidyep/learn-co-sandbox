@@ -15,6 +15,7 @@ button{border:0;cursor:pointer;touch-action:manipulation}button:disabled{opacity
 #export{width:100%;min-height:44px;background:#f2f2f7;color:#005bbf;border-radius:9px;font-weight:600;font-size:14px}small{display:block;margin:12px 0}a{color:#0066cc}
 </style></head><body><main>
 <header><h1>Pax Counter</h1><p class="subtitle">Boarding + Exiting · Shared live data</p></header>
+<label for="initials">Staff initials</label><input id="initials" maxlength="12" placeholder="Enter your initials" autocomplete="off" autocapitalize="characters" spellcheck="false">
 <label for="location">Survey location</label><input id="location" list="locations" maxlength="200" placeholder="Enter intersection or survey site" autocomplete="off"><datalist id="locations"></datalist>
 <button id="start" class="action">Start Count</button><p id="state"></p>
 <section class="counter" aria-labelledby="boarding-heading"><h2 id="boarding-heading">Boarding</h2><p class="hint">Getting onto the van</p><div class="total" id="boarding-total">0</div><div class="controls"><button class="circle minus" id="boarding-minus" disabled aria-label="Subtract last boarding passenger">−</button><button class="circle plus" id="boarding-plus" disabled aria-label="Add boarding passenger">+</button></div></section>
@@ -93,8 +94,8 @@ async function syncPending(){
 }
 function render(){
  const s=active();
- $("location").disabled=$("start").disabled=!!s||blocked||syncing;
- if(s)$("location").value=s.location;
+ $("initials").disabled=$("location").disabled=$("start").disabled=!!s||blocked||syncing;
+ if(s){$("initials").value=s.staffInitials||"";$("location").value=s.location}
  $("finish").disabled=!s||blocked||syncing;
  $("reset").disabled=!s||blocked||syncing||!(total(s,"boarding")+total(s,"exiting"));
  for(const mode of ["boarding","exiting"]){
@@ -102,7 +103,7 @@ function render(){
   $(mode+"-plus").disabled=!s||blocked||syncing;
   $(mode+"-minus").disabled=!s||blocked||syncing||!total(s,mode);
  }
- $("state").textContent=syncing?"Uploading saved count…":s?"Counting · Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Choose a location to start";
+ $("state").textContent=syncing?"Uploading saved count…":s?"Counting · "+(s.staffInitials?s.staffInitials+" · ":"")+"Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Enter your initials and choose a location to start";
  const done=data.sessions.filter(x=>x.finished),pending=done.filter(x=>!x.synced_at).length;
  $("summary").textContent=done.length+" completed sessions · "+done.reduce((n,x)=>n+total(x,"boarding"),0)+" boarded · "+done.reduce((n,x)=>n+total(x,"exiting"),0)+" exited"+(pending?" · "+pending+" waiting to upload":" · All uploaded");
  $("export").disabled=!data.events.some(e=>e.type==="passenger"&&!e.voided);
@@ -110,9 +111,12 @@ function render(){
 }
 $("start").onclick=()=>{
  if(active())return;
+ const staffInitials=$("initials").value.trim().toUpperCase();
  const location=$("location").value.trim();
+ if(!staffInitials){$("message").textContent="Enter your staff initials first.";$("initials").focus();return}
  if(!location){$("message").textContent="Enter the survey location first.";$("location").focus();return}
- save(()=>{const at=now(),s={id:uid(),location,started:at,finished:null,synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Both counters are ready.");
+ $("initials").value=staffInitials;
+ save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Both counters are ready.");
 };
 for(const mode of ["boarding","exiting"]){
  $(mode+"-plus").onclick=()=>{const s=active();if(s)save(()=>log(s,"passenger",mode,now()),mode==="boarding"?"Boarding passenger recorded.":"Exiting passenger recorded.")};
@@ -132,8 +136,8 @@ $("finish").onclick=()=>{
  syncPending();
 };
 $("export").onclick=()=>{
- const rows=[["session_id","location","type","timestamp_nyc","count"]];
- for(const s of data.sessions)for(const r of rowsFor(s))rows.push([r.session_id,r.location,r.type,r.timestamp_nyc,r.count]);
+ const rows=[["session_id","staff_initials","location","type","timestamp_nyc","count"]];
+ for(const s of data.sessions)for(const r of rowsFor(s))rows.push([r.session_id,s.staffInitials||"",r.location,r.type,r.timestamp_nyc,r.count]);
  const cell=v=>{let t=String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
  const csv="\uFEFF"+rows.map(row=>row.map(cell).join(",")).join("\r\n"),url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),a=document.createElement("a");
  a.href=url;a.download="pax-live-"+now().slice(0,10)+".csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
