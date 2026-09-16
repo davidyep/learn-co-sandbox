@@ -114,12 +114,14 @@ $("start").onclick=()=>{
  if(active())return;
  const staffInitials=$("initials").value.trim().toUpperCase();
  const location=$("location").value.trim();
- if(!staffInitials){$("message").textContent="Enter your staff initials first.";$("initials").focus();return}
+ if(!staffInitials){$("initials").setAttribute("aria-invalid","true");$("message").textContent="Enter your staff initials first.";$("initials").focus();return}
+ $("initials").removeAttribute("aria-invalid");
  if(!location){$("location").setAttribute("aria-invalid","true");$("message").textContent="Enter the survey location first.";$("location").focus();return}
  $("location").removeAttribute("aria-invalid");
  $("initials").value=staffInitials;
  save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Both counters are ready.");
 };
+$("initials").addEventListener("input",()=>$("initials").removeAttribute("aria-invalid"));
 $("location").addEventListener("input",()=>$("location").removeAttribute("aria-invalid"));
 for(const mode of ["boarding","exiting"]){
  $(mode+"-plus").onclick=()=>{const s=active();if(s)save(()=>log(s,"passenger",mode,now()),mode==="boarding"?"Boarding passenger recorded.":"Exiting passenger recorded.")};
