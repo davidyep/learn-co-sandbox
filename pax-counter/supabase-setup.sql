@@ -1,6 +1,7 @@
 create table if not exists public.passenger_observations (
   observation_id uuid primary key,
   session_id uuid not null,
+  staff_initials text,
   location text not null check (char_length(location) between 1 and 200),
   type text not null check (type in ('boarding', 'exiting')),
   timestamp_utc timestamptz not null,
@@ -8,6 +9,15 @@ create table if not exists public.passenger_observations (
   count smallint not null default 1 check (count = 1),
   received_at timestamptz not null default now()
 );
+
+alter table public.passenger_observations
+  add column if not exists staff_initials text;
+
+alter table public.passenger_observations
+  drop constraint if exists passenger_observations_staff_initials_check;
+alter table public.passenger_observations
+  add constraint passenger_observations_staff_initials_check
+  check (staff_initials is null or char_length(trim(staff_initials)) between 1 and 12);
 
 alter table public.passenger_observations enable row level security;
 
@@ -28,7 +38,7 @@ with check (
 create or replace view public.passenger_observations_export
 with (security_invoker = true)
 as
-select session_id, location, type, timestamp_nyc, count
+select session_id, location, type, timestamp_nyc, count, staff_initials
 from public.passenger_observations
 order by timestamp_utc;
 

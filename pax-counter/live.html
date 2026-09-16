@@ -58,7 +58,7 @@ function save(fn,message){
 function rowsFor(s){
  const rows=[];
  for(const mode of ["boarding","exiting"]){
-  for(const e of taps(s,mode))rows.push({observation_id:e.id,session_id:s.id,location:s.location,type:mode,timestamp_utc:e.at,timestamp_nyc:nycTimestamp(e.at),count:1});
+  for(const e of taps(s,mode))rows.push({observation_id:e.id,session_id:s.id,staff_initials:s.staffInitials||null,location:s.location,type:mode,timestamp_utc:e.at,timestamp_nyc:nycTimestamp(e.at),count:1});
  }
  return rows;
 }
