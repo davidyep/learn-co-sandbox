@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><link rel="canonical" href="https://davidyep.github.io/learn-co-sandbox/commutervanapp/"><title>Commuter Van Passenger Counter · Live</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-main{max-width:440px;margin:auto;padding:20px 24px 32px}header{text-align:center}h1{font-size:28px;margin:8px 0 4px}.subtitle{font-size:13px;color:#666;margin:0 0 22px}
+main{max-width:440px;margin:auto;padding:20px 24px 32px}header{text-align:center}h1{font-size:28px;margin:8px 0 22px}
 label{display:block;font-size:14px;font-weight:600;margin-bottom:7px}input,button{font:inherit}input{width:100%;font-size:16px;padding:12px;border:1px solid #d4d7dd;border-radius:9px;background:white;min-height:46px;margin-bottom:12px}
 button{border:0;cursor:pointer;touch-action:manipulation}button:disabled{opacity:.35;cursor:default}button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #007aff;outline-offset:4px}
 input[aria-invalid="true"]{border-color:#ff3b30;box-shadow:0 0 0 4px rgba(255,59,48,.18)}input[aria-invalid="true"]:focus-visible{outline-color:#ff3b30}
@@ -15,7 +15,7 @@ input[aria-invalid="true"]{border-color:#ff3b30;box-shadow:0 0 0 4px rgba(255,59
 #message{min-height:36px;color:#555;font-size:13px;line-height:1.4;margin:12px 0}footer{border-top:1px solid #eee;padding-top:12px;color:#666;font-size:12px;line-height:1.5}#summary{margin:0 0 12px}
 #export{width:100%;min-height:44px;background:#f2f2f7;color:#005bbf;border-radius:9px;font-weight:600;font-size:14px}small{display:block;margin:12px 0}a{color:#0066cc}
 </style></head><body><main>
-<header><h1>Commuter Van Passenger Counter</h1><p class="subtitle">Boarding + Exiting · Shared live data</p></header>
+<header><h1>Commuter Van Passenger Counter</h1></header>
 <label for="initials">Staff initials</label><input id="initials" maxlength="12" placeholder="Enter your initials" autocomplete="off" autocapitalize="characters" spellcheck="false">
 <label for="location">Survey location</label><input id="location" list="locations" maxlength="200" placeholder="Enter intersection or survey site" autocomplete="off"><datalist id="locations"></datalist>
 <button id="start" class="action">Start Count</button><p id="state"></p>
@@ -104,7 +104,7 @@ function render(){
   $(mode+"-plus").disabled=!s||blocked||syncing;
   $(mode+"-minus").disabled=!s||blocked||syncing||!total(s,mode);
  }
- $("state").textContent=syncing?"Uploading saved count…":s?"Counting · "+(s.staffInitials?s.staffInitials+" · ":"")+"Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Enter your initials and choose a location to start";
+ $("state").textContent=syncing?"Uploading saved count…":s?"Counting · "+(s.staffInitials?s.staffInitials+" · ":"")+"Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Enter your initials and enter a location to start";
  const done=data.sessions.filter(x=>x.finished),pending=done.filter(x=>!x.synced_at).length;
  $("summary").textContent=done.length+" completed sessions · "+done.reduce((n,x)=>n+total(x,"boarding"),0)+" boarded · "+done.reduce((n,x)=>n+total(x,"exiting"),0)+" exited"+(pending?" · "+pending+" waiting to upload":" · All uploaded");
  $("export").disabled=!data.events.some(e=>e.type==="passenger"&&!e.voided);
