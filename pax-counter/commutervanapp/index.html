@@ -18,11 +18,11 @@ input[aria-invalid="true"]{border-color:#ff3b30;box-shadow:0 0 0 4px rgba(255,59
 <header><h1>Commuter Van Passenger Counter</h1></header>
 <label for="initials">Staff initials</label><input id="initials" maxlength="12" placeholder="Enter your initials" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="next">
 <label for="location">Survey location</label><input id="location" list="locations" maxlength="200" placeholder="Enter intersection or survey site" autocomplete="off" enterkeyhint="done"><datalist id="locations"></datalist>
-<button id="start" class="action">Start Count</button><p id="state"></p>
+<button id="start" class="action">Start Van Count</button><p id="state"></p>
 <section class="counter" aria-labelledby="boarding-heading"><h2 id="boarding-heading">Boarding</h2><p class="hint">Getting onto the van</p><div class="total" id="boarding-total">0</div><div class="controls"><button class="circle minus" id="boarding-minus" disabled aria-label="Subtract last boarding passenger">−</button><button class="circle plus" id="boarding-plus" disabled aria-label="Add boarding passenger">+</button></div></section>
 <section class="counter" aria-labelledby="exiting-heading"><h2 id="exiting-heading">Exiting</h2><p class="hint">Getting off the van</p><div class="total" id="exiting-total">0</div><div class="controls"><button class="circle minus" id="exiting-minus" disabled aria-label="Subtract last exiting passenger">−</button><button class="circle plus" id="exiting-plus" disabled aria-label="Add exiting passenger">+</button></div></section>
-<div class="session-actions"><button id="reset" disabled>Reset Both</button><button id="finish" class="action" disabled>Finish Count</button></div>
-<p id="message" role="status" aria-live="polite"></p><footer><p id="summary"></p><button id="export" disabled>Export Records · CSV</button><small>Each finished count is saved to the shared database. If service drops, it stays on this device and retries automatically.</small></footer>
+<div class="session-actions"><button id="reset" disabled>Reset Both</button><button id="finish" class="action" disabled>Finish Van Count</button></div>
+<p id="message" role="status" aria-live="polite"></p><footer><p id="summary"></p><button id="export" disabled>Export Records · CSV</button><small>Each finished van count is saved, including vans with no boarding or exiting passengers. If service drops, it stays on this device and retries automatically.</small></footer>
 </main><script>
 "use strict";
 const $=id=>document.getElementById(id);
@@ -57,7 +57,7 @@ function save(fn,message){
  render();
 }
 function rowForSession(s){
- return {session_id:s.id,staff_initials:s.staffInitials||null,location:s.location,started_at_utc:s.started,finished_at_utc:s.finished,boarding_total:total(s,"boarding"),exiting_total:total(s,"exiting")};
+ return {session_id:s.id,staff_initials:s.staffInitials||null,location:s.location,started_at_utc:s.started,finished_at_utc:s.finished,van_count:1,boarding_total:total(s,"boarding"),exiting_total:total(s,"exiting")};
 }
 async function syncSession(s){
  if(!s.finished||s.summary_synced_at)return true;
@@ -81,10 +81,10 @@ async function syncPending(){
  syncing=true;render();
  try{
   for(const s of pending)await syncSession(s);
-  $("message").textContent=pending.length===1?"Count successfully uploaded to database.":pending.length+" counts successfully uploaded to database.";
+  $("message").textContent=pending.length===1?"Van count successfully uploaded to database.":pending.length+" van counts successfully uploaded to database.";
  }catch(error){
   console.error("Pax sync failed",error);
-  $("message").textContent="Count is saved on this device and waiting to upload. It will retry when service returns.";
+  $("message").textContent="Van count is saved on this device and waiting to upload. It will retry when service returns.";
  }finally{syncing=false;render()}
 }
 function render(){
@@ -98,15 +98,15 @@ function render(){
   $(mode+"-plus").disabled=!s||blocked||syncing;
   $(mode+"-minus").disabled=!s||blocked||syncing||!total(s,mode);
  }
- $("state").textContent=syncing?"Uploading saved count…":s?"Counting · "+(s.staffInitials?s.staffInitials+" · ":"")+"Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Enter your initials and enter a location to start";
+ $("state").textContent=syncing?"Uploading saved van count…":s?"One van in progress · "+(s.staffInitials?s.staffInitials+" · ":"")+"Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Enter your initials and location to count one van";
  const done=data.sessions.filter(x=>x.finished),pending=done.filter(x=>!x.summary_synced_at).length;
- $("summary").textContent=done.length+" completed sessions · "+done.reduce((n,x)=>n+total(x,"boarding"),0)+" boarded · "+done.reduce((n,x)=>n+total(x,"exiting"),0)+" exited"+(pending?" · "+pending+" waiting to upload":" · All uploaded");
+ $("summary").textContent=done.length+" vans counted · "+done.reduce((n,x)=>n+total(x,"boarding"),0)+" boarded · "+done.reduce((n,x)=>n+total(x,"exiting"),0)+" exited"+(pending?" · "+pending+" waiting to upload":" · All uploaded");
  $("export").disabled=!done.length;
  $("locations").replaceChildren(...[...new Set(data.sessions.map(x=>x.location))].map(name=>{const o=document.createElement("option");o.value=name;return o}));
 }
 function updateStartPrompt(){
  if(active()||blocked||syncing)return;
- $("state").textContent=$("initials").value.trim()&&$("location").value.trim()?"Tap Start Count to begin.":"Enter your initials and enter a location to start";
+ $("state").textContent=$("initials").value.trim()&&$("location").value.trim()?"Tap Start Van Count when one van arrives.":"Enter your initials and location to count one van";
 }
 $("start").onclick=()=>{
  if(active())return;
@@ -117,7 +117,7 @@ $("start").onclick=()=>{
  if(!location){$("location").setAttribute("aria-invalid","true");$("message").textContent="Enter the survey location first.";$("location").focus();return}
  $("location").removeAttribute("aria-invalid");
  $("initials").value=staffInitials;
- save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,summary_synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Both counters are ready.");
+ save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,summary_synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Van count started. Finish it even if no passengers board or exit.");
 };
 $("initials").addEventListener("input",()=>{$("initials").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
 $("location").addEventListener("input",()=>{$("location").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
@@ -147,12 +147,12 @@ $("reset").onclick=()=>{
 $("finish").onclick=()=>{
  const s=active();if(!s)return;
  const boarding=total(s,"boarding"),exiting=total(s,"exiting");
- save(()=>{s.finished=now();log(s,"session_finished","",s.finished)},"Saved: "+boarding+" boarded and "+exiting+" exited. Uploading…");
+ save(()=>{s.finished=now();log(s,"session_finished","",s.finished)},"Saved one van: "+boarding+" boarded and "+exiting+" exited. Uploading…");
  syncPending();
 };
 $("export").onclick=()=>{
- const rows=[["session_id","staff_initials","location","started_at_nyc","finished_at_nyc","boarding_total","exiting_total"]];
- for(const s of data.sessions.filter(x=>x.finished)){const r=rowForSession(s);rows.push([r.session_id,r.staff_initials||"",r.location,nycTimestamp(r.started_at_utc),nycTimestamp(r.finished_at_utc),r.boarding_total,r.exiting_total])}
+ const rows=[["session_id","staff_initials","location","started_at_nyc","finished_at_nyc","van_count","boarding_total","exiting_total"]];
+ for(const s of data.sessions.filter(x=>x.finished)){const r=rowForSession(s);rows.push([r.session_id,r.staff_initials||"",r.location,nycTimestamp(r.started_at_utc),nycTimestamp(r.finished_at_utc),r.van_count,r.boarding_total,r.exiting_total])}
  const cell=v=>{let t=String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
  const csv="\uFEFF"+rows.map(row=>row.map(cell).join(",")).join("\r\n"),url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),a=document.createElement("a");
  a.href=url;a.download="pax-live-"+now().slice(0,10)+".csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);

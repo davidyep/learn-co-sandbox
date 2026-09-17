@@ -53,11 +53,21 @@ create table if not exists public.passenger_count_sessions (
   location text not null check (char_length(location) between 1 and 200),
   started_at_utc timestamptz not null,
   finished_at_utc timestamptz not null,
+  van_count integer not null default 1 check (van_count = 1),
   boarding_total integer not null check (boarding_total >= 0),
   exiting_total integer not null check (exiting_total >= 0),
   received_at timestamptz not null default now(),
   check (finished_at_utc >= started_at_utc)
 );
+
+alter table public.passenger_count_sessions
+  add column if not exists van_count integer not null default 1;
+
+alter table public.passenger_count_sessions
+  drop constraint if exists passenger_count_sessions_van_count_check;
+alter table public.passenger_count_sessions
+  add constraint passenger_count_sessions_van_count_check
+  check (van_count = 1);
 
 alter table public.passenger_count_sessions enable row level security;
 
@@ -72,6 +82,7 @@ to anon
 with check (
   char_length(location) between 1 and 200
   and (staff_initials is null or char_length(trim(staff_initials)) between 1 and 12)
+  and van_count = 1
   and boarding_total >= 0
   and exiting_total >= 0
   and finished_at_utc >= started_at_utc
@@ -87,7 +98,8 @@ select
   started_at_utc,
   finished_at_utc,
   boarding_total,
-  exiting_total
+  exiting_total,
+  van_count
 from public.passenger_count_sessions
 order by started_at_utc;
 
