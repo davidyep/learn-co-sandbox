@@ -16,8 +16,8 @@ input[aria-invalid="true"]{border-color:#ff3b30;box-shadow:0 0 0 4px rgba(255,59
 #export{width:100%;min-height:44px;background:#f2f2f7;color:#005bbf;border-radius:9px;font-weight:600;font-size:14px}small{display:block;margin:12px 0}a{color:#0066cc}
 </style></head><body><main>
 <header><h1>Commuter Van Passenger Counter</h1></header>
-<label for="initials">Staff initials</label><input id="initials" maxlength="12" placeholder="Enter your initials" autocomplete="off" autocapitalize="characters" spellcheck="false">
-<label for="location">Survey location</label><input id="location" list="locations" maxlength="200" placeholder="Enter intersection or survey site" autocomplete="off"><datalist id="locations"></datalist>
+<label for="initials">Staff initials</label><input id="initials" maxlength="12" placeholder="Enter your initials" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="next">
+<label for="location">Survey location</label><input id="location" list="locations" maxlength="200" placeholder="Enter intersection or survey site" autocomplete="off" enterkeyhint="done"><datalist id="locations"></datalist>
 <button id="start" class="action">Start Count</button><p id="state"></p>
 <section class="counter" aria-labelledby="boarding-heading"><h2 id="boarding-heading">Boarding</h2><p class="hint">Getting onto the van</p><div class="total" id="boarding-total">0</div><div class="controls"><button class="circle minus" id="boarding-minus" disabled aria-label="Subtract last boarding passenger">−</button><button class="circle plus" id="boarding-plus" disabled aria-label="Add boarding passenger">+</button></div></section>
 <section class="counter" aria-labelledby="exiting-heading"><h2 id="exiting-heading">Exiting</h2><p class="hint">Getting off the van</p><div class="total" id="exiting-total">0</div><div class="controls"><button class="circle minus" id="exiting-minus" disabled aria-label="Subtract last exiting passenger">−</button><button class="circle plus" id="exiting-plus" disabled aria-label="Add exiting passenger">+</button></div></section>
@@ -110,6 +110,10 @@ function render(){
  $("export").disabled=!data.events.some(e=>e.type==="passenger"&&!e.voided);
  $("locations").replaceChildren(...[...new Set(data.sessions.map(x=>x.location))].map(name=>{const o=document.createElement("option");o.value=name;return o}));
 }
+function updateStartPrompt(){
+ if(active()||blocked||syncing)return;
+ $("state").textContent=$("initials").value.trim()&&$("location").value.trim()?"Tap Start Count to begin.":"Enter your initials and enter a location to start";
+}
 $("start").onclick=()=>{
  if(active())return;
  const staffInitials=$("initials").value.trim().toUpperCase();
@@ -121,8 +125,20 @@ $("start").onclick=()=>{
  $("initials").value=staffInitials;
  save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Both counters are ready.");
 };
-$("initials").addEventListener("input",()=>$("initials").removeAttribute("aria-invalid"));
-$("location").addEventListener("input",()=>$("location").removeAttribute("aria-invalid"));
+$("initials").addEventListener("input",()=>{$("initials").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
+$("location").addEventListener("input",()=>{$("location").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
+$("initials").addEventListener("keydown",event=>{
+ if(event.key!=="Enter")return;
+ event.preventDefault();
+ if(!$("initials").value.trim()){$("initials").setAttribute("aria-invalid","true");$("message").textContent="Enter your staff initials first.";return}
+ $("location").focus();
+});
+$("location").addEventListener("keydown",event=>{
+ if(event.key!=="Enter")return;
+ event.preventDefault();
+ if(!$("location").value.trim()){$("location").setAttribute("aria-invalid","true");$("message").textContent="Enter the survey location first.";return}
+ $("location").removeAttribute("aria-invalid");$("location").blur();$("start").focus();updateStartPrompt();
+});
 for(const mode of ["boarding","exiting"]){
  $(mode+"-plus").onclick=()=>{const s=active();if(s)save(()=>log(s,"passenger",mode,now()),mode==="boarding"?"Boarding passenger recorded.":"Exiting passenger recorded.")};
  $(mode+"-minus").onclick=()=>{
