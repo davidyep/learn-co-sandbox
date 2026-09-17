@@ -90,7 +90,7 @@ async function syncPending(){
 function render(){
  const s=active();
  $("initials").disabled=$("location").disabled=$("start").disabled=!!s||blocked||syncing;
- if(s){$("initials").value=s.staffInitials||"";$("location").value=s.location}
+ if(s){$("initials").value="";$("location").value=""}
  $("finish").disabled=!s||blocked||syncing;
  $("reset").disabled=!s||blocked||syncing||!(total(s,"boarding")+total(s,"exiting"));
  for(const mode of ["boarding","exiting"]){
@@ -152,6 +152,8 @@ $("finish").onclick=()=>{
  syncPending();
 };
 $("new-count").onclick=()=>{
+ const previous=data.sessions.filter(s=>s.finished).at(-1);
+ if(previous){$("initials").value=previous.staffInitials||"";$("location").value=previous.location}
  $("start").click();
  if(active())window.scrollTo({top:0,behavior:"smooth"});
 };
