@@ -56,21 +56,15 @@ function save(fn,message){
  catch{data=JSON.parse(previous);$("message").textContent="Could not save this action. It was not applied."}
  render();
 }
-function rowsFor(s){
- const rows=[];
- for(const mode of ["boarding","exiting"]){
-  for(const e of taps(s,mode))rows.push({observation_id:e.id,session_id:s.id,staff_initials:s.staffInitials||null,location:s.location,type:mode,timestamp_utc:e.at,timestamp_nyc:nycTimestamp(e.at),count:1});
- }
- return rows;
+function rowForSession(s){
+ return {session_id:s.id,staff_initials:s.staffInitials||null,location:s.location,started_at_utc:s.started,finished_at_utc:s.finished,boarding_total:total(s,"boarding"),exiting_total:total(s,"exiting")};
 }
 async function syncSession(s){
- if(!s.finished||s.synced_at)return true;
- const rows=rowsFor(s);
- if(!rows.length){s.synced_at=now();persist();return true}
- const response=await fetch(SUPABASE_URL+"/rest/v1/passenger_observations",{
+ if(!s.finished||s.summary_synced_at)return true;
+ const response=await fetch(SUPABASE_URL+"/rest/v1/passenger_count_sessions",{
   method:"POST",
   headers:{"apikey":SUPABASE_KEY,"Content-Type":"application/json","Prefer":"return=minimal"},
-  body:JSON.stringify(rows)
+  body:JSON.stringify(rowForSession(s))
  });
  if(!response.ok){
   const detail=await response.text();
@@ -78,11 +72,11 @@ async function syncSession(s){
   try{duplicate=response.status===409&&JSON.parse(detail).code==="23505"}catch{}
   if(!duplicate)throw Error("Database returned "+response.status+": "+detail);
  }
- s.synced_at=now();persist();return true;
+ s.summary_synced_at=now();persist();return true;
 }
 async function syncPending(){
  if(syncing||blocked||!navigator.onLine)return;
- const pending=data.sessions.filter(s=>s.finished&&!s.synced_at);
+ const pending=data.sessions.filter(s=>s.finished&&!s.summary_synced_at);
  if(!pending.length)return;
  syncing=true;render();
  try{
@@ -105,9 +99,9 @@ function render(){
   $(mode+"-minus").disabled=!s||blocked||syncing||!total(s,mode);
  }
  $("state").textContent=syncing?"Uploading saved count…":s?"Counting · "+(s.staffInitials?s.staffInitials+" · ":"")+"Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Enter your initials and enter a location to start";
- const done=data.sessions.filter(x=>x.finished),pending=done.filter(x=>!x.synced_at).length;
+ const done=data.sessions.filter(x=>x.finished),pending=done.filter(x=>!x.summary_synced_at).length;
  $("summary").textContent=done.length+" completed sessions · "+done.reduce((n,x)=>n+total(x,"boarding"),0)+" boarded · "+done.reduce((n,x)=>n+total(x,"exiting"),0)+" exited"+(pending?" · "+pending+" waiting to upload":" · All uploaded");
- $("export").disabled=!data.events.some(e=>e.type==="passenger"&&!e.voided);
+ $("export").disabled=!done.length;
  $("locations").replaceChildren(...[...new Set(data.sessions.map(x=>x.location))].map(name=>{const o=document.createElement("option");o.value=name;return o}));
 }
 function updateStartPrompt(){
@@ -123,7 +117,7 @@ $("start").onclick=()=>{
  if(!location){$("location").setAttribute("aria-invalid","true");$("message").textContent="Enter the survey location first.";$("location").focus();return}
  $("location").removeAttribute("aria-invalid");
  $("initials").value=staffInitials;
- save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Both counters are ready.");
+ save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,summary_synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Both counters are ready.");
 };
 $("initials").addEventListener("input",()=>{$("initials").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
 $("location").addEventListener("input",()=>{$("location").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
@@ -157,8 +151,8 @@ $("finish").onclick=()=>{
  syncPending();
 };
 $("export").onclick=()=>{
- const rows=[["session_id","staff_initials","location","type","timestamp_nyc","count"]];
- for(const s of data.sessions)for(const r of rowsFor(s))rows.push([r.session_id,s.staffInitials||"",r.location,r.type,r.timestamp_nyc,r.count]);
+ const rows=[["session_id","staff_initials","location","started_at_nyc","finished_at_nyc","boarding_total","exiting_total"]];
+ for(const s of data.sessions.filter(x=>x.finished)){const r=rowForSession(s);rows.push([r.session_id,r.staff_initials||"",r.location,nycTimestamp(r.started_at_utc),nycTimestamp(r.finished_at_utc),r.boarding_total,r.exiting_total])}
  const cell=v=>{let t=String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
  const csv="\uFEFF"+rows.map(row=>row.map(cell).join(",")).join("\r\n"),url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),a=document.createElement("a");
  a.href=url;a.download="pax-live-"+now().slice(0,10)+".csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
