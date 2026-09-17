@@ -12,7 +12,7 @@ input[aria-invalid="true"]{border-color:#ff3b30;box-shadow:0 0 0 4px rgba(255,59
 .controls{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:320px;gap:48px;margin:auto}
 .circle{display:flex;align-items:center;justify-content:center;flex:0 0 72px;width:72px;height:72px;border-radius:50%;padding:0;font-size:32px;font-weight:400;color:white;line-height:1}.minus{background:#ff3b30}.plus{background:#34c759}.circle:active:not(:disabled){transform:scale(.94)}
 .session-actions{display:flex;gap:14px;margin-top:6px;align-items:stretch}#reset{background:#007aff;color:#fff;font-size:17px;padding:12px 16px;border-radius:9px;min-height:48px;white-space:nowrap}.session-actions .action{flex:1}
-#message{min-height:36px;color:#555;font-size:13px;line-height:1.4;margin:12px 0}footer{border-top:1px solid #eee;padding-top:12px;color:#666;font-size:12px;line-height:1.5}#summary{margin:0 0 12px}
+#message{min-height:36px;color:#555;font-size:13px;line-height:1.4;margin:12px 0}#new-count{margin:0 0 14px}#new-count[hidden]{display:none}footer{border-top:1px solid #eee;padding-top:12px;color:#666;font-size:12px;line-height:1.5}#summary{margin:0 0 12px}
 #export{width:100%;min-height:44px;background:#f2f2f7;color:#005bbf;border-radius:9px;font-weight:600;font-size:14px}small{display:block;margin:12px 0}a{color:#0066cc}
 </style></head><body><main>
 <header><h1>Commuter Van Passenger Counter</h1></header>
@@ -22,7 +22,7 @@ input[aria-invalid="true"]{border-color:#ff3b30;box-shadow:0 0 0 4px rgba(255,59
 <section class="counter" aria-labelledby="boarding-heading"><h2 id="boarding-heading">Boarding</h2><p class="hint">Getting onto the van</p><div class="total" id="boarding-total">0</div><div class="controls"><button class="circle minus" id="boarding-minus" disabled aria-label="Subtract last boarding passenger">−</button><button class="circle plus" id="boarding-plus" disabled aria-label="Add boarding passenger">+</button></div></section>
 <section class="counter" aria-labelledby="exiting-heading"><h2 id="exiting-heading">Exiting</h2><p class="hint">Getting off the van</p><div class="total" id="exiting-total">0</div><div class="controls"><button class="circle minus" id="exiting-minus" disabled aria-label="Subtract last exiting passenger">−</button><button class="circle plus" id="exiting-plus" disabled aria-label="Add exiting passenger">+</button></div></section>
 <div class="session-actions"><button id="reset" disabled>Reset Both</button><button id="finish" class="action" disabled>Finish Van Count</button></div>
-<p id="message" role="status" aria-live="polite"></p><footer><p id="summary"></p><button id="export" disabled>Export Records · CSV</button><small>Each finished van count is saved, including vans with no boarding or exiting passengers. If service drops, it stays on this device and retries automatically.</small></footer>
+<p id="message" role="status" aria-live="polite"></p><button id="new-count" class="action" hidden>Start Next Van Count</button><footer><p id="summary"></p><button id="export" disabled>Export Records · CSV</button><small>Each finished van count is saved, including vans with no boarding or exiting passengers. If service drops, it stays on this device and retries automatically.</small></footer>
 </main><script>
 "use strict";
 const $=id=>document.getElementById(id);
@@ -101,6 +101,7 @@ function render(){
  $("state").textContent=syncing?"Uploading saved van count…":s?"One van in progress · "+(s.staffInitials?s.staffInitials+" · ":"")+"Started "+new Date(s.started).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"})+" ET":"Enter your initials and location to count one van";
  const done=data.sessions.filter(x=>x.finished),pending=done.filter(x=>!x.summary_synced_at).length;
  $("summary").textContent=done.length+" vans counted · "+done.reduce((n,x)=>n+total(x,"boarding"),0)+" boarded · "+done.reduce((n,x)=>n+total(x,"exiting"),0)+" exited"+(pending?" · "+pending+" waiting to upload":" · All uploaded");
+ $("new-count").hidden=!!s||!done.length||blocked||syncing;
  $("export").disabled=!done.length;
  $("locations").replaceChildren(...[...new Set(data.sessions.map(x=>x.location))].map(name=>{const o=document.createElement("option");o.value=name;return o}));
 }
@@ -149,6 +150,10 @@ $("finish").onclick=()=>{
  const boarding=total(s,"boarding"),exiting=total(s,"exiting");
  save(()=>{s.finished=now();log(s,"session_finished","",s.finished)},"Saved one van: "+boarding+" boarded and "+exiting+" exited. Uploading…");
  syncPending();
+};
+$("new-count").onclick=()=>{
+ $("start").click();
+ if(active())window.scrollTo({top:0,behavior:"smooth"});
 };
 $("export").onclick=()=>{
  const rows=[["session_id","staff_initials","location","started_at_nyc","finished_at_nyc","van_count","boarding_total","exiting_total"]];
