@@ -19,6 +19,7 @@ input[aria-invalid="true"]{border-color:#ff3b30;box-shadow:0 0 0 4px rgba(255,59
 <label for="initials">Staff initials</label><input id="initials" maxlength="12" placeholder="Enter your initials" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="next">
 <label for="location">Survey location</label><input id="location" list="locations" maxlength="200" placeholder="Enter intersection or survey site" autocomplete="off" enterkeyhint="done"><datalist id="locations"></datalist>
 <button id="start" class="action">Start Van Count</button><p id="state"></p>
+<p id="gps-status" role="status" aria-live="polite" style="font-size:14px;color:#555">Starting a count requests this phone's location once and saves it with the van entry.</p>
 <section class="counter" aria-labelledby="boarding-heading"><h2 id="boarding-heading">Boarding</h2><p class="hint">Getting onto the van</p><div class="total" id="boarding-total">0</div><div class="controls"><button class="circle minus" id="boarding-minus" disabled aria-label="Subtract last boarding passenger">−</button><button class="circle plus" id="boarding-plus" disabled aria-label="Add boarding passenger">+</button></div></section>
 <section class="counter" aria-labelledby="exiting-heading"><h2 id="exiting-heading">Exiting</h2><p class="hint">Getting off the van</p><div class="total" id="exiting-total">0</div><div class="controls"><button class="circle minus" id="exiting-minus" disabled aria-label="Subtract last exiting passenger">−</button><button class="circle plus" id="exiting-plus" disabled aria-label="Add exiting passenger">+</button></div></section>
 <div class="session-actions"><button id="reset" disabled>Reset Both</button><button id="finish" class="action" disabled>Finish Van Count</button></div>
@@ -46,7 +47,7 @@ function validate(d){
  return d;
 }
 function persist(){localStorage.setItem(KEY,JSON.stringify(data))}
-try{const saved=localStorage.getItem(KEY);if(saved)data=validate(JSON.parse(saved))}
+try{const saved=localStorage.getItem(KEY);if(saved){data=validate(JSON.parse(saved));for(const s of data.sessions)if(s.gps_status==="pending")s.gps_status="interrupted";persist()}}
 catch{blocked=true;$("message").textContent="Cannot open saved records. Counting is paused to protect them."}
 function log(s,type,mode,at,extra={}){data.events.push({id:uid(),sessionId:s.id,type,mode,at,...extra})}
 function save(fn,message){
@@ -57,10 +58,36 @@ function save(fn,message){
  render();
 }
 function rowForSession(s){
- return {session_id:s.id,staff_initials:s.staffInitials||null,location:s.location,started_at_utc:s.started,finished_at_utc:s.finished,van_count:1,boarding_total:total(s,"boarding"),exiting_total:total(s,"exiting")};
+ return {session_id:s.id,staff_initials:s.staffInitials||null,location:s.location,started_at_utc:s.started,finished_at_utc:s.finished,van_count:1,boarding_total:total(s,"boarding"),exiting_total:total(s,"exiting"),latitude:s.latitude??null,longitude:s.longitude??null,gps_accuracy_m:s.gps_accuracy_m??null,gps_captured_at:s.gps_captured_at??null,gps_status:s.gps_status||"not_requested"};
+}
+function captureLocation(id){
+ let settled=false;
+ const complete=(status,fields={})=>{
+  if(settled)return;settled=true;clearTimeout(timer);
+  if(blocked)return;
+  const s=data.sessions.find(x=>x.id===id);
+  if(!s||s.gps_status!=="pending"||s.summary_synced_at)return;
+  const previous=JSON.stringify(s);
+  Object.assign(s,{gps_status:status},fields);
+  try{persist()}catch{
+   Object.assign(s,JSON.parse(previous));
+   for(const key of Object.keys(fields))delete s[key];
+   s.gps_status="unavailable";
+   $("message").textContent="Could not save GPS. Passenger counts are retained.";
+  }
+  render();if(s.finished)syncPending();
+ };
+ const timer=setTimeout(()=>complete("timeout"),12000);
+ if(!navigator.geolocation){complete("unavailable");return}
+ try{navigator.geolocation.getCurrentPosition(position=>{
+  const {latitude,longitude,accuracy}=position.coords;
+  if(!Number.isFinite(latitude)||Math.abs(latitude)>90||!Number.isFinite(longitude)||Math.abs(longitude)>180||!Number.isFinite(accuracy)||accuracy<0||!Number.isFinite(position.timestamp)){complete("unavailable");return}
+  complete("captured",{latitude,longitude,gps_accuracy_m:accuracy,gps_captured_at:new Date(position.timestamp).toISOString()});
+ },error=>complete(error.code===1?"denied":error.code===3?"timeout":"unavailable"),
+ {enableHighAccuracy:true,timeout:10000,maximumAge:0})}catch{complete("unavailable")}
 }
 async function syncSession(s){
- if(!s.finished||s.summary_synced_at)return true;
+ if(!s.finished||s.summary_synced_at||s.gps_status==="pending")return true;
  const response=await fetch(SUPABASE_URL+"/rest/v1/passenger_count_sessions",{
   method:"POST",
   headers:{"apikey":SUPABASE_KEY,"Content-Type":"application/json","Prefer":"return=minimal"},
@@ -76,7 +103,7 @@ async function syncSession(s){
 }
 async function syncPending(){
  if(syncing||blocked||!navigator.onLine)return;
- const pending=data.sessions.filter(s=>s.finished&&!s.summary_synced_at);
+ const pending=data.sessions.filter(s=>s.finished&&!s.summary_synced_at&&s.gps_status!=="pending");
  if(!pending.length)return;
  syncing=true;render();
  try{
@@ -85,10 +112,15 @@ async function syncPending(){
  }catch(error){
   console.error("Pax sync failed",error);
   $("message").textContent="Van count is saved on this device and waiting to upload. It will retry when service returns.";
- }finally{syncing=false;render()}
+ }finally{
+  syncing=false;render();
+  if(data.sessions.some(s=>s.finished&&!s.summary_synced_at&&s.gps_status!=="pending"&&!pending.includes(s)))syncPending();
+ }
 }
 function render(){
  const s=active();
+ const gpsSession=s||data.sessions.at(-1),gps=gpsSession?.gps_status;
+ $("gps-status").textContent=gps==="pending"?"Finding location… You can keep counting.":gps==="captured"?"Location captured · accuracy approximately "+Math.round(gpsSession.gps_accuracy_m)+" m":gps==="denied"?"Location permission denied. Count will use the entered survey location.":["unavailable","timeout","interrupted"].includes(gps)?"Location unavailable. Count will use the entered survey location.":"Starting a count requests this phone's location once and saves it with the van entry.";
  $("initials").disabled=$("location").disabled=!!s||blocked;
  $("start").disabled=!!s||blocked||syncing;
  if(s){$("initials").value=s.staffInitials||"";$("location").value=s.location}
@@ -118,7 +150,8 @@ $("start").onclick=()=>{
  if(!location){$("location").setAttribute("aria-invalid","true");$("message").textContent="Enter the survey location first.";$("location").focus();return}
  $("location").removeAttribute("aria-invalid");
  $("initials").value=staffInitials;
- save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,summary_synced_at:null};data.sessions.push(s);log(s,"session_started","",at)},"Van count started. Finish it even if no passengers board or exit.");
+ save(()=>{const at=now(),s={id:uid(),staffInitials,location,started:at,finished:null,summary_synced_at:null,gps_status:"pending"};data.sessions.push(s);log(s,"session_started","",at)},"Van count started. Finish it even if no passengers board or exit.");
+ if(active())captureLocation(active().id);
 };
 $("initials").addEventListener("input",()=>{$("initials").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
 $("location").addEventListener("input",()=>{$("location").removeAttribute("aria-invalid");$("message").textContent="";updateStartPrompt()});
@@ -156,8 +189,8 @@ $("finish").onclick=()=>{
  syncPending();
 };
 $("export").onclick=()=>{
- const rows=[["session_id","staff_initials","location","started_at_nyc","finished_at_nyc","van_count","boarding_total","exiting_total"]];
- for(const s of data.sessions.filter(x=>x.finished)){const r=rowForSession(s);rows.push([r.session_id,r.staff_initials||"",r.location,nycTimestamp(r.started_at_utc),nycTimestamp(r.finished_at_utc),r.van_count,r.boarding_total,r.exiting_total])}
+ const rows=[["session_id","staff_initials","location","started_at_nyc","finished_at_nyc","van_count","boarding_total","exiting_total","latitude","longitude","gps_accuracy_m","gps_captured_at","gps_status"]];
+ for(const s of data.sessions.filter(x=>x.finished)){const r=rowForSession(s);rows.push([r.session_id,r.staff_initials||"",r.location,nycTimestamp(r.started_at_utc),nycTimestamp(r.finished_at_utc),r.van_count,r.boarding_total,r.exiting_total,r.latitude??"",r.longitude??"",r.gps_accuracy_m??"",r.gps_captured_at??"",r.gps_status])}
  const cell=v=>{let t=String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
  const csv="\uFEFF"+rows.map(row=>row.map(cell).join(",")).join("\r\n"),url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),a=document.createElement("a");
  a.href=url;a.download="pax-live-"+now().slice(0,10)+".csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);

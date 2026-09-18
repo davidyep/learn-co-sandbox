@@ -1,3 +1,4 @@
+-- After this base setup, run supabase-gps-migration.sql for the GPS-enabled app.
 create table if not exists public.passenger_observations (
   observation_id uuid primary key,
   session_id uuid not null,
